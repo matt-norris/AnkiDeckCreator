@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Anki Deck Creator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.7.570/pdf.min.js"></script>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <h1>Generate Anki Questions</h1>
+      <label for="text-input"></label
+      ><textarea id="text-input" placeholder="Paste your text here"></textarea>
+      <input type="file" id="file-input" accept=".pdf" />
+      <div id="file-name"></div>
+      <div id="controls">
+        <button id="copy-btn">Copy Text</button>
+        <button id="generate-btn">Generate</button>
+      </div>
+      <div id="response-container"></div>
+    </div>
+    <script type="importmap">
+      {
+        "imports": {
+          "@google/generative-ai": "https://esm.run/@google/generative-ai",
+          "pdf-lib": "https://cdn.skypack.dev/pdf-lib"
+        }
+      }
+    </script>
+    <script type="module">
+      import { GoogleGenerativeAI } from "@google/generative-ai";
+      import { PDFDocument } from "pdf-lib";
+
+      const API_KEY = "KEY GOES HERE"; // Make sure to securely handle your API key
+      const genAI = new GoogleGenerativeAI(API_KEY);
+      const textInput = document.getElementById("text-input");
+      const fileInput = document.getElementById("file-input");
+      const fileNameElement = document.getElementById("file-name");
+      const responseContainer = document.getElementById("response-container");
+      const generateBtn = document.getElementById("generate-btn");
+
+      generateBtn.addEventListener("click", generateResponse);
+
+      document
+        .getElementById("copy-btn")
+        .addEventListener("click", function () {
+          const responseContainerText =
+            document.getElementById("response-container").innerText;
+          navigator.clipboard
+            .writeText(responseContainerText)
+            .then(() => {
+              alert("Text copied to clipboard");
+            })
+            .catch((err) => {
+              console.error("Failed to copy text: ", err);
+            });
+        });
+
+      async function generateResponse() {
+        const textContent = textInput.value;
+        const file = fileInput.files[0];
+
+        let content;
+        if (textContent) {
+          content = textContent;
+          fileNameElement.textContent = "Text Provided";
+        } else if (file) {
+          fileNameElement.textContent = "worked";
+          content = await extractTextFromPDF(file);
+          fileNameElement.textContent = file.name;
+        } else {
+          fileNameElement.textContent = "";
+          responseContainer.textContent = "";
+          return;
+        }
+
+        const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+        const chat = model.startChat({
+          history: [
+            {
+              role: "user",
+              parts: [
+                {
+                  text:
+                    "In the following response I will provide you with a section of text, you need to analyze the text, determine any useful study questions based on the text, and return to me a list " +
+                    "of Questions that can be imported into Anki. Here is an example of the formatting I am requesting:" +
+                    "" +
+                    "",
+                },
+              ],
+            },
+            {
+              role: "model",
+              parts: [{ text: "Great please provide me with the text now." }],
+            },
+          ],
+          generationConfig: { maxOutputTokens: 10000 },
+        });
+        const result = await chat.sendMessage(content);
+        const response = await result.response;
+        const text = await response.text();
+        responseContainer.textContent = text;
+        fileNameElement.textContent = "Call Complete";
+      }
+
+      async function extractTextFromPDF(file) {
+        const pdfBytes = await file.arrayBuffer();
+        const loadingTask = pdfjsLib.getDocument({ data: pdfBytes });
+        const pdf = await loadingTask.promise;
+
+        let fullText = "";
+        for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+          const page = await pdf.getPage(pageNum);
+          const textContent = await page.getTextContent();
+          let pageText = textContent.items.map((item) => item.str).join(" ");
+          fullText += pageText + "\n\n"; // Adding a newline for each page
+        }
+
+        return fullText;
+      }
+    </script>
+  </body>
+</html>
